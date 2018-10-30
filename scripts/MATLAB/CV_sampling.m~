@@ -1,0 +1,84 @@
+%% script.m
+% script show how to use simulate model described by equatiuons and
+% stimulus function
+% script returns matrix 17 x n
+% - n - number of time points
+% - rows contains trajectories of subsequent variables (proteins)
+% - mean level of pSTAT1 in the nucleus is described by variable y14
+
+%% model dependent function created by create('modelname') 
+clear all;
+ScriptConfiguration;
+name = 'JAKSTAT';
+namepath = 'JAKSTATdensityver1';
+addpath(modelmatlabdir(namepath));
+addpath(modelsymbolicdir(namepath));
+pathoutput = modeloutputdir(namepath);
+mkdir(pathoutput);
+all_equations=str2func([name,'_MRE']);
+
+%% read in parameters of a  model
+[parn, parx, parnames] = textread([name, '_no_sigma.par'], '%s %f %q');
+[varn, varx, varnames] = textread([name, '_no_sigma.var'], '%s %f %q');
+
+%% calculate trajetories i.e. Y from the paper - concatenation of means and variances 
+stimulus = @(i, t) JAKSTAT_stimulus(t,i);
+
+%% read in a list of starting points of stat1 and ifngr
+CV_list = {'real', 0.1, 0.3, 0.7, 0.9};
+
+no_samples_list = {1414};
+prot_combination_list = {'STAT1', 'IFNGR', 'STAT1_IFNGR1'};
+for prot_combination_i= 1:size(prot_combination_list, 2)
+    prot_combination=prot_combination_list{prot_combination_i};
+for CV_i=1:size(CV_list, 2)
+    CV=CV_list{CV_i};
+    for no_samples_i=1:size(no_samples_list, 2)
+        no_samples = no_samples_list{no_samples_i};
+       path_sample = [modelmatlabdir(namepath), '/sampled_protein/' ...
+    nume2str(prot_combination), '/', num2str(no_samples), '/' ...
+    num2str(CV), '/sampled_s1_ifngr.csv'];
+
+type(prot_combination)
+
+    list_protein = csvread(path_sample, 1, 3, [1, 3, no_samples, 4]);
+
+    stim_level=[0,0.1,1];
+    traj_peak = zeros(1, size(stim_level,2));
+    t=[];
+
+    tmesh = 0:5:100;
+    tspan=[tmesh(1),tmesh(end)];
+    for i=1:size(stim_level,2)
+        stim = stim_level(i);
+        traj_variance=[];
+        for a = 1:size(list_protein,1)
+             varx(1)=list_protein(a,1);
+             varx(15)=list_protein(a,2);
+                parx(5) = stim; %stimulation level
+                mysolution=ode15s(all_equations,tspan,varx,[],parx,stimulus);
+                traj=deval(mysolution,tmesh);
+                long_version1(1:size(traj,2))=list_protein(a,1);
+                long_version2(1:size(traj,2))=list_protein(a,2);
+                traj_variance=[traj_variance;traj;long_version1;long_version2];
+        end
+        size(traj_variance);
+        B=size(traj);
+        
+        A(1:B(:,2))=parx(5);
+        
+        traj_stim=[traj_variance;A;tmesh];
+        %         traj_peak(i) = traj(14,4);
+        
+        t=[t;traj_stim];
+        size(t);
+    end
+    pathsampled = ['/home/piotrek/Documents/heterogeneity_model/input/sampled_traj/' ...
+        nume2str(prot_combination), '/', num2str(no_samples), '/', num2str(CV)];
+        
+    mkdir(pathsampled);
+    csvwrite([pathsampled,'/sampled_traj.csv'],t);
+    end
+end
+end
+2
